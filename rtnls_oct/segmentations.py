@@ -1,5 +1,6 @@
 import numpy as np
 from rtnls_oct import plotting
+import matplotlib.pyplot as plt
 
 class ContoursData:
 
@@ -101,11 +102,14 @@ class PixelWiseSegmentation:
         label = self.LABELS[label]
         return self.data == label
     
-    def plot_bscan(self, bscan: int, label=None):
+    def plot_bscan(self, bscan: int, label=None, ax=None):
+        if ax is None:
+            fig, ax = plt.subplots()
         if label is None:
-            plotting.plot_mask(self.data[bscan, :, :])
+            plotting.plot_mask(self.data[bscan, :, :], ax=ax)
         else:
-            plotting.plot_mask(self.data[bscan, :, :] == self.LABELS[label][0])
+            plotting.plot_mask(self.data[bscan, :, :] == self.LABELS[label][0], ax=ax)
+        return ax
 
     def get_bscan(self, bscan: int):
         return self.data[bscan, :, :]

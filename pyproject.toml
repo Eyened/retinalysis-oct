@@ -39,6 +39,11 @@ dependencies = [
     "pydicom",
 ]
 
+[project.optional-dependencies]
+eyened = [
+    "eyened_orm",
+]
+
 [project.scripts]
 # Add console scripts here if needed
 # rtnls-oct = rtnls_oct.cli:main
