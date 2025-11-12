@@ -83,10 +83,11 @@ def load_segmentation_from_orm(segmentation) -> PixelWiseSegmentation:
     else:
         raise ValueError(f"Segmentation must be an instance of ModelSegmentation or Segmentation, found {type(segmentation)} instead")
     if feature.subfeatures_list:
-        labels = {feature: i for i, feature in enumerate(feature.subfeatures_list)}
+        print(f"Subfeatures: {feature.subfeatures_list}")
+        labels = {subfeature: i for i, subfeature in enumerate(feature.subfeatures_list)}
     else:
         labels = {'Background': 0, feature.FeatureName: 1}
-    seg_object.labels = labels
+    seg_object.LABELS = labels
     return seg_object
 
 def load_oct_by_id(imageinstance_id: int, session) -> OCT3DVolume:

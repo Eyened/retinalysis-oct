@@ -101,6 +101,12 @@ class PixelWiseSegmentation:
     def get_mask(self, label: str):
         label = self.LABELS[label]
         return self.data == label
+
+    def get_combined_mask(self, labels: list[str]):
+        mask = np.zeros(self.data.shape, dtype=bool)
+        for label in labels:
+            mask |= self.get_mask(label)
+        return mask
     
     def plot_bscan(self, bscan: int, label=None, ax=None):
         if ax is None:
@@ -114,9 +120,11 @@ class PixelWiseSegmentation:
     def get_bscan(self, bscan: int):
         return self.data[bscan, :, :]
     
-    def get_thickness_map(self, label: str):
-        thickness = np.sum(self.get_mask(label), axis=1)
-        return thickness
+    def get_thickness_map(self, labels: list[str]):
+        thickness = np.sum(self.get_combined_mask(labels), axis=1)
+        # Create mask from combined mask (inverse: where there are no labels)
+        mask = ~np.any(self.get_combined_mask(labels), axis=1)
+        return np.ma.masked_array(thickness, mask=mask)
 
 
 class MacularLayers(PixelWiseSegmentation):
