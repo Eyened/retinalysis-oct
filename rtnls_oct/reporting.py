@@ -412,7 +412,7 @@ class RetinalThicknessReport:
             if not valid_layers:
                 raise ValueError("No layers found for fovea detection after filtering background and Choroid.")
             # Sum all layers into thickness map 
-            thickness_map = pixel_seg.get_thickness_map(labels=valid_layers)
+            thickness_map = pixel_seg.get_thickness_map(valid_layers)
             fovea_y, fovea_x = utils.find_fovea(
                 height_map=thickness_map,
                 res_depth_mm=oct_volume.res_depth_mm,

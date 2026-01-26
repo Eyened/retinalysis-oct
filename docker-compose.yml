@@ -1,0 +1,31 @@
+version: '3.8'
+
+services:
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: rtnls-oct-worker
+    environment:
+      CONFIG_CELERY: /home/kvangarderen/eyened-modelservice/
+      CELERY_BROKER_URL: pyamqp://guest@host.docker.internal:5672//
+      CELERY_RESULT_BACKEND: db+sqlite:////mnt/ssd1/modelservice/celery-backend.db
+      DATABASE_USER: ${DATABASE_USER}
+      DATABASE_PASSWORD: ${DATABASE_PASSWORD}
+      DATABASE_HOST: ${DATABASE_HOST}
+      DATABASE_PORT: ${DATABASE_PORT}
+      DATABASE_NAME: ${DATABASE_NAME}
+      IMAGES_BASEPATH: ${IMAGES_BASEPATH}
+      STORAGE_BASEPATH: ${STORAGE_BASEPATH}
+      ANNOTATIONS_PATH: ${ANNOTATIONS_PATH}
+      SEGMENTATIONS_ZARR_STORE: ${SEGMENTATIONS_ZARR_STORE}
+      SECRET_KEY: ${SECRET_KEY}
+    volumes:
+      - ./output:/app/output
+      - ./data:/app/data:ro  # Mount data directory for input files (read-only)
+      - /mnt/:/mnt/
+      - /home/:/home/
+    extra_hosts:
+      - "host.docker.internal:host-gateway"  # Allows access to host services
+
+

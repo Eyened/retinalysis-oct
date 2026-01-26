@@ -43,10 +43,13 @@ dependencies = [
 eyened = [
     "eyened_orm",
 ]
+worker = [
+    "celery>=5.3.0",
+    "kombu>=5.3.0",  # Required for RabbitMQ
+]
 
 [project.scripts]
-# Add console scripts here if needed
-# rtnls-oct = rtnls_oct.cli:main
+rtnls-oct-worker = "worker.run_worker:main"
 
 [project.urls]
 Homepage = "https://github.com/eyened/retinalysis-oct"

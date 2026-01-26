@@ -82,15 +82,15 @@ def load_segmentation_from_orm(segmentation) -> PixelWiseSegmentation:
         feature = segmentation.Feature
     else:
         raise ValueError(f"Segmentation must be an instance of ModelSegmentation or Segmentation, found {type(segmentation)} instead")
-    if feature.subfeatures_list:
-        print(f"Subfeatures: {feature.subfeatures_list}")
-        labels = {subfeature: i for i, subfeature in enumerate(feature.subfeatures_list)}
+    if feature.subfeatures:
+        print(f"Subfeatures: {feature.subfeatures}")
+        labels = {subfeature: i for i, subfeature in feature.subfeatures.items()}
     else:
         labels = {'Background': 0, feature.FeatureName: 1}
     seg_object.LABELS = labels
     return seg_object
 
-def load_oct_by_id(imageinstance_id: int, session) -> OCT3DVolume:
+def load_oct_by_id(session, imageinstance_id: int) -> OCT3DVolume:
     """
     Load OCT volume by ID from eyened_orm.
     
@@ -102,13 +102,13 @@ def load_oct_by_id(imageinstance_id: int, session) -> OCT3DVolume:
         OCT3DVolume
     """
     _check_eyened_orm_available()
-    imageinstance = session.query(ImageInstance).filter_by(ImageInstanceID=imageinstance_id).first()
+    imageinstance = session.query(ImageInstance).filter(ImageInstance.ImageInstanceID==imageinstance_id).first()
     if imageinstance is None:
         raise ValueError(f"ImageInstance record with id {imageinstance_id} not found")
     return load_oct_volume_from_orm(imageinstance)
 
 
-def load_model_segmentation_by_id(model_segmentation_id: int, session) -> PixelWiseSegmentation:
+def load_model_segmentation_by_id(session, model_segmentation_id: int) -> PixelWiseSegmentation:
     """
     Load segmentation associated with an ImageInstance by ImageInstance ID.
     
@@ -120,13 +120,13 @@ def load_model_segmentation_by_id(model_segmentation_id: int, session) -> PixelW
         PixelWiseSegmentation
     """
     _check_eyened_orm_available()
-    model_segmentation = session.query(ModelSegmentation).filter_by(ModelSegmentationID=model_segmentation_id).first()
+    model_segmentation = session.query(ModelSegmentation).filter(ModelSegmentation.ModelSegmentationID==model_segmentation_id).first()
 
     if model_segmentation is None:
         raise ValueError(f"ModelSegmentation record with id {model_segmentation_id} not found")
     return load_segmentation_from_orm(model_segmentation)
 
-def load_segmentation_by_id(segmentation_id: int, session) -> PixelWiseSegmentation:
+def load_segmentation_by_id(session, segmentation_id: int) -> PixelWiseSegmentation:
     """
     Load segmentation by ID from eyened_orm.
     
@@ -138,10 +138,10 @@ def load_segmentation_by_id(segmentation_id: int, session) -> PixelWiseSegmentat
         PixelWiseSegmentation
     """
     _check_eyened_orm_available()
-    segmentation = session.query(Segmentation).filter_by(SegmentationID=segmentation_id).first()
+    segmentation = session.query(Segmentation).filter(Segmentation.SegmentationID==segmentation_id).first()
     return load_segmentation_from_orm(segmentation)
 
-def load_model_segmentation_with_oct_by_id(model_segmentation_id: int, session) -> tuple[PixelWiseSegmentation, OCT3DVolume]:
+def load_model_segmentation_with_oct_by_id(session, model_segmentation_id: int) -> tuple[PixelWiseSegmentation, OCT3DVolume]:
     """
     Load ModelSegmentation and OCT volume by ID from eyened_orm.
     
@@ -153,7 +153,7 @@ def load_model_segmentation_with_oct_by_id(model_segmentation_id: int, session) 
         tuple: (PixelWiseSegmentation, OCT3DVolume)
     """
     _check_eyened_orm_available()
-    model_segmentation = session.query(ModelSegmentation).filter_by(ModelSegmentationID=model_segmentation_id).first()
+    model_segmentation = session.query(ModelSegmentation).filter(ModelSegmentation.ModelSegmentationID==model_segmentation_id).first()
     if model_segmentation is None:
         raise ValueError(f"ModelSegmentation record with id {model_segmentation_id} not found")
     oct_volume = load_oct_volume_from_orm(model_segmentation.ImageInstance)
