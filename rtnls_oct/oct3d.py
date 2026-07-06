@@ -14,8 +14,8 @@ class OCT3DVolume:
     res_depth_mm: float = None
     laterality: str = None
     orientation: str = None
-    direction_bscan: str = None
-    axial_direction: str = None
+    direction_bscan: str = 'Right'
+    axial_direction: str = 'Down'
     fixation: str = None
     pe_result = None
 
@@ -30,10 +30,16 @@ class OCT3DVolume:
         return cls(image, res_width_mm=res_x, res_height_mm=res_y, res_depth_mm=res_z, laterality=laterality)
     
     def plot_enface_image(self, ax=None, flip_vertical=False):
+        if ax is None:
+            _, ax = plt.subplots()
         if flip_vertical:
             plot_enface(np.flip(self.image, axis=0), ax=ax)
         else:
             plot_enface(self.image, ax=ax)
+
+    @property
+    def resolution_mm(self) -> tuple[float, float, float]:
+        return self.res_depth_mm, self.res_height_mm, self.res_width_mm
 
     def plot_central_bscan(self, ax=None):
         if ax is None:
@@ -59,13 +65,13 @@ class OCT3DVolume:
 
     def plot_etdrs_grid(self, center=None, ax=None):
         if ax is None:
-            ax = plt
-        fields = self.get_etdrs_grid(center)
+            _, ax = plt.subplots()
+        from rtnls_oct.utils import get_etdrs_grid_on_image
+        fields = get_etdrs_grid_on_image(self.image.shape, self.resolution_mm, self.laterality, self.direction_bscan, self.axial_direction, center)
         for name, mask in fields.items():
             self.plot_enface_image(ax=ax)
             if np.any(mask):
                 plot_mask(mask, alpha=0.2, ax=ax)
-            ax.set_title(name)
 
     def rotate_to_standard_orientation(self, thickness_array: np.ndarray) -> np.ndarray:
         if self.orientation == 'Horizontal':

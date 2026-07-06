@@ -6,6 +6,12 @@ This module provides utilities for loading 3D OCT volumes and layer segmentation
 
 The `rtnls_oct.eyened.dataloading` module bridges the gap between the `eyened_orm` database ORM and the Retinalysis-OCT analysis tools. It converts `ImageInstance` and `Segmentation` records into `OCT3DVolume` and `PixelWiseSegmentation` objects that can be used with the rest of the Retinalysis-OCT package.
 
+Install with:
+
+```bash
+pip install rtnls-oct[eyened]
+```
+
 ## Prerequisites
 
 - `eyened_orm` package installed and configured
@@ -16,8 +22,6 @@ The `rtnls_oct.eyened.dataloading` module bridges the gap between the `eyened_or
 
 ### 1. Setting Up Database Connection
 
-First, establish a connection to the database:
-
 ```python
 from eyened_orm import Database
 
@@ -26,13 +30,10 @@ database = Database()
 
 ### 2. Querying OCT Images and Segmentations
 
-Query the database to find OCT images with segmentations:
-
 ```python
 from eyened_orm import ImageInstance, Modality, ETDRSField, ModelSegmentation, Feature, Scan, SegmentationModel
 
 with database.get_session() as session:
-    # Query for OCT images with macular layer segmentations
     query = session.query(ImageInstance, ModelSegmentation)\
         .filter(ImageInstance.Modality == Modality.OCT)\
         .filter(ImageInstance.ETDRSField == ETDRSField.F2)\
@@ -40,8 +41,7 @@ with database.get_session() as session:
         .join(ModelSegmentation, ModelSegmentation.ImageInstanceID == ImageInstance.ImageInstanceID)\
         .join(SegmentationModel).join(Feature)\
         .where(Feature.FeatureName == 'Macular Layers NEW')
-    
-    # Get a random instance for demonstration
+
     import random
     random_instance = random.choice(query.all())
     instance_id = random_instance[0].ImageInstanceID
@@ -50,63 +50,48 @@ with database.get_session() as session:
 
 ### 3. Loading OCT Volume
 
-Load an OCT volume from an `ImageInstance`:
-
 ```python
 from rtnls_oct.eyened import dataloading
 
 with database.get_session() as session:
     instance = session.query(ImageInstance)\
         .filter(ImageInstance.ImageInstanceID == instance_id).first()
-    
+
     oct_volume = dataloading.load_oct_volume_from_orm(instance)
-    
-    # Check the volume shape: (n_bscans, height, width)
+
     print(f"OCT volume shape: {oct_volume.image.shape}")
     print(f"Laterality: {oct_volume.laterality}")
     print(f"Resolution: {oct_volume.res_depth_mm} x {oct_volume.res_height_mm} x {oct_volume.res_width_mm} mm")
 ```
 
-### 4. Loading Segmentation
-
-Load a segmentation along with its associated OCT volume:
+### 4. Loading Segmentation with OCT Volume
 
 ```python
 from rtnls_oct.eyened import dataloading
 
 with database.get_session() as session:
-    # Load both segmentation and OCT volume together
     segmentation, oct_volume = dataloading.load_model_segmentation_with_oct_by_id(
-        segmentation_id, 
-        session
+        session,
+        segmentation_id,
     )
-    
-    # Check available labels
+
+    print(f"Segmentation data shape: {segmentation.data.shape}")
     print(f"Segmentation labels: {segmentation.LABELS}")
-    print(f"Custom labels: {segmentation.labels}")
 ```
 
-### 5. Visualizing Data
+All `load_*_by_id` functions take the database session as the first argument.
 
-Visualize the loaded data:
+### 5. Visualizing Data
 
 ```python
 import matplotlib.pyplot as plt
 
-# Plot a specific B-scan with segmentation overlay
-segmentation.plot_bscan(bscan_index=10)
+bscan_index = oct_volume.n_bscans // 2
 
-# Or plot a specific layer
-segmentation.plot_bscan(bscan_index=10, label='RNFL')
-
-# Plot the OCT volume enface image
-fig, ax = plt.subplots(figsize=(8, 8))
-oct_volume.plot_enface_image(ax=ax)
-plt.show()
-
-# Plot a specific B-scan from the OCT volume
-fig, ax = plt.subplots(figsize=(10, 6))
-oct_volume.plot_bscan(bscan_index=10, ax=ax)
+fig, axes = plt.subplots(1, 2, figsize=(12, 6))
+oct_volume.plot_bscan(bscan_index, ax=axes[0])
+segmentation.plot_bscan(bscan_index, ax=axes[0])
+oct_volume.plot_enface_image(ax=axes[1])
 plt.show()
 ```
 
@@ -114,7 +99,7 @@ plt.show()
 
 ### Loading OCT Volumes
 
-#### `load_oct_volume_from_orm(imageinstance: ImageInstance) -> OCT3DVolume`
+#### `load_oct_volume_from_orm(imageinstance) -> OCT3DVolume`
 
 Loads a 3D OCT volume from an `ImageInstance` record.
 
@@ -122,7 +107,7 @@ Loads a 3D OCT volume from an `ImageInstance` record.
 - `imageinstance`: An `eyened_orm.ImageInstance` record object
 
 **Returns:**
-- `OCT3DVolume`: A 3D OCT volume object with image data and metadata
+- `OCT3DVolume`
 
 **Example:**
 ```python
@@ -131,265 +116,203 @@ with database.get_session() as session:
     oct_volume = dataloading.load_oct_volume_from_orm(instance)
 ```
 
-#### `load_oct_by_id(imageinstance_id: int, session) -> OCT3DVolume`
+#### `load_oct_by_id(session, imageinstance_id) -> OCT3DVolume`
 
 Loads an OCT volume by `ImageInstanceID`.
 
 **Parameters:**
-- `imageinstance_id`: ID of the ImageInstance record
 - `session`: ORM database session
-
-**Returns:**
-- `OCT3DVolume`: A 3D OCT volume object
+- `imageinstance_id`: ID of the ImageInstance record
 
 **Example:**
 ```python
 with database.get_session() as session:
-    oct_volume = dataloading.load_oct_by_id(123, session)
+    oct_volume = dataloading.load_oct_by_id(session, 123)
 ```
 
 ### Loading Segmentations
 
-#### `load_segmentation_from_orm(segmentation: SegmentationBase) -> PixelWiseSegmentation`
+#### `load_segmentation_from_orm(segmentation) -> PixelWiseSegmentation`
 
 Loads a layer segmentation from a segmentation record.
 
 **Parameters:**
-- `segmentation`: An `eyened_orm.SegmentationBase` record (either `ModelSegmentation` or `Segmentation`)
+- `segmentation`: An `eyened_orm` `ModelSegmentation` or `Segmentation` record
 
 **Returns:**
-- `PixelWiseSegmentation`: A pixel-wise segmentation object
+- `PixelWiseSegmentation` with layer names in `LABELS`
 
-**Example:**
-```python
-with database.get_session() as session:
-    model_seg = session.query(ModelSegmentation).filter_by(ModelSegmentationID=456).first()
-    segmentation = dataloading.load_segmentation_from_orm(model_seg)
-```
-
-#### `load_model_segmentation_by_id(model_segmentation_id: int, session) -> PixelWiseSegmentation`
+#### `load_model_segmentation_by_id(session, model_segmentation_id) -> PixelWiseSegmentation`
 
 Loads a `ModelSegmentation` by ID.
 
-**Parameters:**
-- `model_segmentation_id`: ID of the ModelSegmentation record
-- `session`: ORM database session
-
-**Returns:**
-- `PixelWiseSegmentation`: A pixel-wise segmentation object
-
 **Example:**
 ```python
 with database.get_session() as session:
-    segmentation = dataloading.load_model_segmentation_by_id(456, session)
+    segmentation = dataloading.load_model_segmentation_by_id(session, 456)
 ```
 
-#### `load_segmentation_by_id(segmentation_id: int, session) -> PixelWiseSegmentation`
+#### `load_segmentation_by_id(session, segmentation_id) -> PixelWiseSegmentation`
 
-Loads a `Segmentation` by ID.
-
-**Parameters:**
-- `segmentation_id`: ID of the Segmentation record
-- `session`: ORM database session
-
-**Returns:**
-- `PixelWiseSegmentation`: A pixel-wise segmentation object
+Loads a manual `Segmentation` by ID.
 
 ### Loading Both Together
 
-#### `load_model_segmentation_with_oct_by_id(model_segmentation_id: int, session) -> tuple[PixelWiseSegmentation, OCT3DVolume]`
+#### `load_model_segmentation_with_oct_by_id(session, model_segmentation_id) -> tuple[PixelWiseSegmentation, OCT3DVolume]`
 
 Loads both a `ModelSegmentation` and its associated OCT volume.
-
-**Parameters:**
-- `model_segmentation_id`: ID of the ModelSegmentation record
-- `session`: ORM database session
-
-**Returns:**
-- `tuple`: A tuple containing `(PixelWiseSegmentation, OCT3DVolume)`
 
 **Example:**
 ```python
 with database.get_session() as session:
-    segmentation, oct_volume = dataloading.load_model_segmentation_with_oct_by_id(456, session)
+    segmentation, oct_volume = dataloading.load_model_segmentation_with_oct_by_id(session, 456)
 ```
 
-#### `load_segmentation_with_oct_by_id(segmentation_id: int, session) -> tuple[PixelWiseSegmentation, OCT3DVolume]`
+#### `load_segmentation_with_oct_by_id(session, segmentation_id) -> tuple[PixelWiseSegmentation, OCT3DVolume]`
 
-Loads both a `Segmentation` and its associated OCT volume.
+Loads both a manual `Segmentation` and its associated OCT volume.
 
-**Parameters:**
-- `segmentation_id`: ID of the Segmentation record
-- `session`: ORM database session
-
-**Returns:**
-- `tuple`: A tuple containing `(PixelWiseSegmentation, OCT3DVolume)`
+**Example:**
+```python
+with database.get_session() as session:
+    segmentation, oct_volume = dataloading.load_segmentation_with_oct_by_id(session, 789)
+```
 
 ## Complete Example
 
-Here's a complete example that loads data and performs basic analysis:
-
 ```python
-from eyened_orm import Database, ImageInstance, Modality, ETDRSField, ModelSegmentation, Feature, Scan, SegmentationModel
+from eyened_orm import Database, ImageInstance, Modality, ModelSegmentation, Feature, Scan, SegmentationModel
 from rtnls_oct.eyened import dataloading
-from rtnls_oct import utils
 import matplotlib.pyplot as plt
 
-# Set up database
 database = Database()
 
 with database.get_session() as session:
-    # Query for OCT with macular layers
     query = session.query(ImageInstance, ModelSegmentation)\
         .filter(ImageInstance.Modality == Modality.OCT)\
         .join(Scan).filter(Scan.ScanMode == '3D-Scan')\
         .join(ModelSegmentation, ModelSegmentation.ImageInstanceID == ImageInstance.ImageInstanceID)\
         .join(SegmentationModel).join(Feature)\
         .where(Feature.FeatureName == 'Macular Layers NEW')
-    
-    # Get first result
+
     result = query.first()
     if result:
-        instance_id = result[0].ImageInstanceID
         segmentation_id = result[1].ModelSegmentationID
-        
-        # Load both segmentation and OCT volume
+
         segmentation, oct_volume = dataloading.load_model_segmentation_with_oct_by_id(
-            segmentation_id, 
-            session
+            session,
+            segmentation_id,
         )
-        
-        # Display information
+
         print(f"OCT Volume Shape: {oct_volume.image.shape}")
         print(f"Laterality: {oct_volume.laterality}")
-        print(f"Available Labels: {segmentation.labels}")
-        
-        # Visualize
+        print(f"Available Labels: {list(segmentation.LABELS.keys())}")
+
         fig, axes = plt.subplots(1, 2, figsize=(12, 6))
-        
-        # Plot enface image
         oct_volume.plot_enface_image(ax=axes[0])
         axes[0].set_title('Enface Image')
-        
-        # Plot B-scan with segmentation
         oct_volume.plot_bscan(oct_volume.n_bscans // 2, ax=axes[1])
         axes[1].set_title('Central B-scan')
-        
         plt.tight_layout()
         plt.show()
 ```
 
 ## Integration with RetinalThicknessReport
 
-Once you've loaded the data, you can use it with other Retinalysis-OCT tools. Note that `RetinalThicknessReport` expects `ContoursData` (height maps), while the eyened_orm loader returns `PixelWiseSegmentation` (pixel-wise labels).
-
-### Converting PixelWiseSegmentation to ContoursData
-
-To convert a pixel-wise segmentation to height maps for use with `RetinalThicknessReport`:
+`RetinalThicknessReport` supports `PixelWiseSegmentation` natively. Use `from_pixelwise()` for automatic fovea detection:
 
 ```python
-from rtnls_oct.segmentations import ContoursData
-import numpy as np
-
-# Extract height maps from pixel-wise segmentation
-# For each layer, find the topmost pixel (argmax along depth axis)
-n_bscans, height, width = segmentation.data.shape
-
-# Create ContoursData object
-contours_data = ContoursData(width=width, n_bscans=n_bscans)
-
-# Extract height maps for each layer in the labels
-# Note: segmentation.labels maps layer names to label values
-for layer_name, label_value in segmentation.labels.items():
-    if layer_name == 'Background':
-        continue
-    
-    # Get mask for this layer (data shape is n_bscans x height x width)
-    layer_mask = (segmentation.data == label_value)
-    
-    # Find topmost pixel (minimum depth index) for each position using argmax
-    # argmax returns first True value along depth axis (axis=1)
-    # Shape: (n_bscans, width)
-    height_map = np.argmax(layer_mask, axis=1)
-    
-    # Set to 0 where layer is not present (no True values found)
-    # argmax returns 0 if no True value found, so we need to check if layer exists
-    has_layer = np.any(layer_mask, axis=1)
-    height_map[~has_layer] = 0
-    
-    contours_data.add_surface(layer_name, height_map)
-
-# Now you can use it with RetinalThicknessReport
 from rtnls_oct import RetinalThicknessReport
-from rtnls_oct import utils
 
-fovea_y, fovea_x = utils.find_fovea(
-    height_map=contours_data.get_height_map("ILM"),
-    res_depth_mm=oct_volume.res_depth_mm,
-    res_width_mm=oct_volume.res_width_mm
-)
-
-report = RetinalThicknessReport(
+report = RetinalThicknessReport.from_pixelwise(
     oct_volume=oct_volume,
-    segmentation=contours_data,
+    pixel_seg=segmentation,
     laterality=oct_volume.laterality,
-    fovea_x=fovea_x,
-    fovea_y=fovea_y
+    auto_find_fovea=True,
 )
+
+available_labels = segmentation.LABELS.keys()
+
+report.add_thickness_map(
+    name="RNFL",
+    layer_names=["Retinal Nerve Fiber Layer (RNFL)"],
+    vmin=0,
+    vmax=0.2,
+)
+
+total_layers = [
+    "Retinal Nerve Fiber Layer (RNFL)",
+    "Ganglion cell layer (GCL)",
+    "Inner plexiform layer (IPL)",
+    "Inner nuclear layer (INL)",
+    "Outer plexiform layer (OPL)",
+    "Outer nuclear layer (ONL)",
+    "External limiting membrane (ELM)",
+    "Myoid zone (MZ)",
+    "Ellipsoid zone (EZ)",
+    "Outer Segments (OS)",
+    "Inter Digitation Zone (IDZ)",
+    "Retinal pigment epithelium (RPE)",
+]
+total_layers = [layer for layer in total_layers if layer in available_labels]
+
+if total_layers:
+    report.add_thickness_map(
+        name="Total",
+        layer_names=total_layers,
+        vmin=0,
+        vmax=0.5,
+    )
+
+report.process()
+results = report.get_result_dict()
+report.write_report_html("output/report", id="patient_001")
 ```
+
+Layer names must match the keys in `segmentation.LABELS` as loaded from the database `Feature.subfeatures`.
 
 ### Using PixelWiseSegmentation Directly
 
-For pixel-wise analysis, you can use the segmentation methods directly. Note that some methods may require the layer name to match the `LABELS` class attribute, while custom labels are stored in the instance `labels` attribute:
-
 ```python
-# Get mask for a layer using the label value directly
-label_value = segmentation.labels.get('RNFL', None)
-if label_value is not None:
-    layer_mask = (segmentation.data == label_value)
+# Thickness map for specific layers (sum along depth axis)
+thickness_map = segmentation.get_thickness_map(["Retinal Nerve Fiber Layer (RNFL)"])
 
-# Get thickness map (sum along depth axis)
-# Note: This requires the layer to be in LABELS, or use manual calculation
-if 'RNFL' in segmentation.labels:
-    label_value = segmentation.labels['RNFL']
-    thickness_map = np.sum(segmentation.data == label_value, axis=1)
+# Mask for a single layer
+label_value = segmentation.LABELS["Retinal Nerve Fiber Layer (RNFL)"]
+layer_mask = segmentation.data == label_value
 
-# Visualize a specific B-scan
-# Note: plot_bscan uses LABELS class attribute, so custom labels may not work directly
-# You may need to access the data directly:
-import matplotlib.pyplot as plt
+# Visualize a B-scan
+segmentation.plot_bscan(bscan_index=10)
 bscan_data = segmentation.get_bscan(bscan_index=10)
-plt.imshow(bscan_data, cmap='gray')
-plt.show()
 ```
 
 ## Notes
 
-- **Session Management**: Always use database sessions within a context manager (`with database.get_session() as session:`) to ensure proper cleanup.
-
-- **Segmentation Types**: The module supports both `ModelSegmentation` and `Segmentation` types from `eyened_orm`.
-
-- **Label Mapping**: Segmentation labels are automatically extracted from the `Feature` and `subfeatures_list` in the database. Custom labels are stored in the `labels` attribute of the `PixelWiseSegmentation` object.
-
-- **Data Format**: The loaded `OCT3DVolume` follows the Retinalysis-OCT conventions: image shape is `(n_bscans, height, width)` and resolutions are in millimeters.
+- **Session management**: Always use database sessions within a context manager (`with database.get_session() as session:`).
+- **Argument order**: All `load_*_by_id` functions take `session` as the first argument.
+- **Segmentation types**: Supports both `ModelSegmentation` and `Segmentation` from `eyened_orm`.
+- **Label mapping**: Labels are extracted from the `Feature` and its `subfeatures` dict. They are stored on `segmentation.LABELS` as `{layer_name: label_value}`.
+- **Data format**: `OCT3DVolume.image` shape is `(n_bscans, height, width)`; resolutions are in millimeters.
 
 ## Troubleshooting
 
 ### Common Issues
 
 1. **"ImageInstance must have a 'pixel_array' attribute"**
-   - Ensure the `ImageInstance` has been properly loaded with its pixel data
-   - Check that the image data is accessible via `imageinstance.pixel_array`
+   - Ensure the `ImageInstance` has been properly loaded with its pixel data.
 
 2. **"Segmentation record not found"**
-   - Verify the segmentation ID exists in the database
-   - Check that you're using the correct session
+   - Verify the segmentation ID exists in the database.
+   - Check that you are using the correct session.
 
 3. **Label mapping issues**
-   - Check that the `Feature` has the expected structure
-   - Verify `subfeatures_list` is populated for multi-layer segmentations
+   - Check that the `Feature` has the expected structure.
+   - Verify `subfeatures` is populated for multi-layer segmentations.
+   - Print `segmentation.LABELS` to see available layer names.
 
 4. **Dimension mismatches**
-   - Ensure the segmentation dimensions match the OCT volume
-   - Check that both are from the same `ImageInstance`
+   - Ensure the segmentation dimensions match the OCT volume.
+   - Check that both are from the same `ImageInstance`.
 
+5. **Layer name not found in thickness report**
+   - Use exact layer names from `segmentation.LABELS.keys()` when calling `add_thickness_map(layer_names=[...])`.

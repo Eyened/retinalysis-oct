@@ -28,13 +28,45 @@ def plot_enface(data: np.ndarray, ax=None):
 
     return ax
 
-def plot_grid_masks(masks: dict[str, np.ndarray], ax=None):
+def plot_grid_masks(
+    masks: dict[str, np.ndarray],
+    ax=None,
+    *,
+    line_color: str = "r",
+    label_color: str | None = None,
+    linewidths: float = 0.5,
+    show_labels: bool = True,
+):
+    """Draw ETDRS (or other) region outlines from boolean masks on the current image.
+
+    Parameters
+    ----------
+    line_color
+        Matplotlib color for contour lines (default red, matching previous behavior).
+    label_color
+        Color for region name annotations; defaults to ``line_color`` if ``show_labels``.
+    linewidths
+        Contour line width in points.
+    show_labels
+        If False, contours only (no region text).
+    """
     if ax is None:
-        fig, ax = plt.subplots()
+        _, ax = plt.subplots()
+    if label_color is None:
+        label_color = line_color
     for name, mask in masks.items():
-        ax.contour(mask, colors=['r'], linewidths=0.5)
+        ax.contour(mask, colors=[line_color], linewidths=linewidths)
+        if not show_labels:
+            continue
         ys, xs = np.where(mask)
         if len(xs) > 0 and len(ys) > 0:
             x_center = xs.mean()
             y_center = ys.mean()
-            ax.annotate(name, (x_center, y_center), color='red', ha='center', va='center', fontsize=5)
+            ax.annotate(
+                name,
+                (x_center, y_center),
+                color=label_color,
+                ha="center",
+                va="center",
+                fontsize=5,
+            )

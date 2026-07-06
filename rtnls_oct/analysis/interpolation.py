@@ -32,10 +32,30 @@ class InterpolationMap:
             'all': np.ones(self.x_locs.shape),
         }
        
-    def plot_with_values(self, values: np.ndarray, ax=None, center=(0, 0), resolution_mm=(1, 1), **kwargs):
+    def plot_with_values(
+        self,
+        values: np.ndarray,
+        ax=None,
+        center=(0, 0),
+        resolution_mm=(1, 1),
+        laterality: str | None = None,
+        **kwargs,
+    ):
+        """Scatter sample locations in image pixel space, colored by ``values``.
+
+        Uses the same x/y convention as :meth:`interpolate`. If ``laterality`` is
+        omitted, ``reference_laterality`` is assumed (matches sampling that eye).
+        """
         if ax is None:
-            fig, ax = plt.subplots()
-        ax.scatter(self.x_locs/resolution_mm[1] + center[1], self.y_locs/resolution_mm[0] + center[0], s=1, c=values, **kwargs)
+            _, ax = plt.subplots()
+        if laterality is None:
+            laterality = self.reference_laterality
+        if laterality == self.reference_laterality:
+            xvals = center[1] + self.x_locs / resolution_mm[1]
+        else:
+            xvals = center[1] - self.x_locs / resolution_mm[1]
+        yvals = center[0] + self.y_locs / resolution_mm[0]
+        ax.scatter(xvals, yvals, c=values, **kwargs)
         return ax
     
 
@@ -43,9 +63,8 @@ class InterpolationMap:
 class CircularInterpolationMap(InterpolationMap):
 
     def __init__(self, radius_mm: float, points_per_mm: int, reference_laterality='R'):
-        extent = radius_mm + 2/points_per_mm
-        print(extent)
-        n_points = points_per_mm*radius_mm*2+2
+        extent = radius_mm + 2 / points_per_mm
+        n_points = int(points_per_mm * radius_mm * 2 + 2)
         x_range = np.linspace(-extent, extent, n_points)
         y_range = np.linspace(-extent, extent, n_points)
         xval, yval = np.meshgrid(x_range, y_range)
@@ -69,13 +88,4 @@ class ETDRSInterpolationMap(CircularInterpolationMap):
 
     def get_masks(self):
         return utils.get_etdrs_fields(self.x_locs, self.y_locs, self.reference_laterality)
-    
-    def plot_with_values(self, values: np.ndarray, ax=None, center=(0, 0), resolution_mm=(1, 1), laterality='R', **kwargs):
-        if laterality == self.reference_laterality:
-            xvals = center[1] + self.x_locs/resolution_mm[1]
-        else:
-            xvals = center[1] - self.x_locs/resolution_mm[1]
-        yvals = center[0] + self.y_locs/resolution_mm[0]
-        ax.scatter(xvals, yvals, c=values, **kwargs)
-        return ax
 

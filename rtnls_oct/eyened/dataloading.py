@@ -160,13 +160,13 @@ def load_model_segmentation_with_oct_by_id(session, model_segmentation_id: int) 
     segmentation = load_segmentation_from_orm(model_segmentation)
     return segmentation, oct_volume
 
-def load_segmentation_with_oct_by_id(segmentation_id: int, session) -> tuple[PixelWiseSegmentation, OCT3DVolume]:
+def load_segmentation_with_oct_by_id(session, segmentation_id: int) -> tuple[PixelWiseSegmentation, OCT3DVolume]:
     """
     Load segmentation and OCT volume by ID from eyened_orm.
     
     Args:
-        segmentation_id: ID of the Segmentation record
         session: ORM database session
+        segmentation_id: ID of the Segmentation record
     
     Returns:
         tuple: (PixelWiseSegmentation, OCT3DVolume)

@@ -21,7 +21,7 @@ def get_etdrs_grid_on_image(image_shape: tuple[int], resolution_mm: tuple[float]
 def get_etdrs_fields(x_locs_mm: np.ndarray, y_locs_mm: np.ndarray,
                      laterality: str,
                      direction_x: str='Right', 
-                     direction_y: str='Down'):
+                     direction_y: str='Down') -> dict:
     if not (direction_x in ['Left', 'Right'] and direction_y in ['Up', 'Down']) or\
                 (direction_x in ['Up', 'Down'] and direction_y in ['Left', 'Right']):
             raise ValueError(f"Invalid direction_x or direction_y: {direction_x}, {direction_y}. Must be a combination of 'Left'/'Right' and 'Up'/'Down'.")
@@ -31,10 +31,16 @@ def get_etdrs_fields(x_locs_mm: np.ndarray, y_locs_mm: np.ndarray,
     distance_radial = np.sqrt(x_locs_mm**2 + y_locs_mm**2)
     th = np.arctan2(y_locs_mm, x_locs_mm) / (2 * np.pi)
 
-    top = (1/8 < th) & (th <= 3/8)
-    right = (3/8 < th) | (th <= -3/8)
-    bottom = (- 3/8 < th) & (th <= -1/8)
-    left = (-1/8 < th) & (th <= 1/8)
+    top_quadrant = (1/8 < th) & (th <= 3/8)
+    right_quadrant = (3/8 < th) | (th <= -3/8)
+    bottom_quadrant = (- 3/8 < th) & (th <= -1/8)
+    left_quadrant = (-1/8 < th) & (th <= 1/8)
+
+    top_hemifield = (0 < th) & (th <= 1)
+    bottom_hemifield = (-1 < th) & (th <= 0)
+    left_hemifield = (-1/4 < th) & (th <= 1/4)
+    right_hemifield = (-1/4 > th) | (th >= 1/4)
+
     central_circle = distance_radial < 0.5
     inner = (distance_radial > 0.5) * (distance_radial <= 1.5)
     outer = (distance_radial > 1.5) * (distance_radial <= 3)
@@ -49,42 +55,50 @@ def get_etdrs_fields(x_locs_mm: np.ndarray, y_locs_mm: np.ndarray,
         '1': inner,
         '2': outer
     }
-
     quadrants = {}
+    hemifields = {}
     if direction_x == 'Up':
-        quadrants['I'] = left
-        quadrants['S'] = right
+        quadrants['I'] = left_quadrant
+        quadrants['S'] = right_quadrant
+        hemifields['S'] = right_hemifield
+        hemifields['I'] = left_hemifield
     elif direction_x == 'Down':
-        quadrants['I'] = right
-        quadrants['S'] = left
+        quadrants['I'] = right_quadrant
+        quadrants['S'] = left_quadrant
+        hemifields['S'] = left_hemifield
+        hemifields['I'] = right_hemifield
     elif (direction_x == 'Left' and laterality == 'R') or\
             (direction_x == 'Right' and laterality == 'L'):
-        quadrants['T'] = right
-        quadrants['N'] = left
+        quadrants['T'] = right_quadrant
+        quadrants['N'] = left_quadrant
     elif (direction_x == 'Right' and laterality == 'R') or\
             (direction_x == 'Left' and laterality == 'L'):
-        quadrants['N'] = right
-        quadrants['T'] = left
-
+        quadrants['N'] = right_quadrant
+        quadrants['T'] = left_quadrant
     if direction_y == 'Up':
-        quadrants['S'] = bottom
-        quadrants['I'] = top
+        quadrants['S'] = bottom_quadrant
+        quadrants['I'] = top_quadrant
+        hemifields['S'] = bottom_hemifield
+        hemifields['I'] = top_hemifield
     elif direction_y == 'Down':
-        quadrants['S'] = top
-        quadrants['I'] = bottom
+        quadrants['S'] = top_quadrant
+        quadrants['I'] = bottom_quadrant
+        hemifields['S'] = top_hemifield
+        hemifields['I'] = bottom_hemifield
     elif (direction_y == 'Left' and laterality == 'R') or\
             (direction_y == 'Right' and laterality == 'L'):
-        quadrants['T'] = bottom
-        quadrants['N'] = top
+        quadrants['T'] = bottom_quadrant
+        quadrants['N'] = top_quadrant
     elif (direction_y == 'Right' and laterality == 'R') or\
             (direction_y == 'Left' and laterality == 'L'):
-        quadrants['T'] = top
-        quadrants['N'] = bottom
+        quadrants['T'] = top_quadrant
+        quadrants['N'] = bottom_quadrant
 
     for name, mask in rings.items():
         for quadrant_name in ['S', 'I', 'N', 'T']:
             fields[f'{quadrant_name}{name}'] = quadrants[quadrant_name] * mask
-
+    for name in ['S', 'I']:
+        fields[f'{name}_hemifield'] = hemifields[name]*full
     return fields
 
 

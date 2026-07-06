@@ -13,6 +13,7 @@ A Python package for the analysis of Optical Coherence Tomography (OCT) volumes 
 - **Quality Metrics**: Calculate thickness fluctuation and other quality indicators
 - **Report Generation**: Create HTML reports with visualizations
 - **Visualization Tools**: Plot B-scans, enface images, thickness maps, and grids
+- **eyened_orm Integration**: Load OCT volumes and segmentations from the EyeNED database (optional)
 
 ## Installation
 
@@ -27,6 +28,18 @@ git clone https://github.com/eyened/retinalysis-oct
 cd retinalysis-oct
 pip install -e .
 ```
+
+### Optional dependencies
+
+```bash
+# eyened_orm database integration
+pip install rtnls-oct[eyened]
+
+# Celery worker (see worker/README.md)
+pip install rtnls-oct[worker]
+```
+
+Requires Python 3.10+.
 
 ## Quick Start
 
@@ -50,7 +63,7 @@ oct_volume = OCT3DVolume(
 )
 ```
 
-### Working with Segmentations
+### Working with Contour Segmentations
 
 ```python
 from rtnls_oct import ContoursData
@@ -58,15 +71,14 @@ from rtnls_oct import ContoursData
 # Load segmentation from NPZ file
 segmentation = ContoursData.from_npz("path/to/segmentation.npz")
 
-# Calculate thickness map
+# Calculate thickness map between boundaries
 thickness_map = segmentation.get_thickness_map("ILM", "RPE")
 ```
 
-### Generating a Thickness Report
+### Generating a Thickness Report (ContoursData)
 
 ```python
-from rtnls_oct import RetinalThicknessReport
-from rtnls_oct import utils
+from rtnls_oct import RetinalThicknessReport, utils
 
 # Find fovea location
 fovea_y, fovea_x = utils.find_fovea(
@@ -84,7 +96,7 @@ report = RetinalThicknessReport(
     fovea_y=fovea_y
 )
 
-# Add thickness maps
+# Add thickness maps using boundary names
 report.add_thickness_map("RNFL", boundary_bottom="RNFL", boundary_top="ILM")
 report.add_thickness_map("Total", boundary_bottom="RPE", boundary_top="ILM")
 
@@ -95,6 +107,46 @@ results = report.get_result_dict()
 # Generate HTML report
 report.write_report_html("output/report", id="patient_001")
 ```
+
+### Generating a Thickness Report (PixelWiseSegmentation)
+
+For pixel-wise segmentations (e.g. from `eyened_orm`), use `from_pixelwise()` and `layer_names`:
+
+```python
+from rtnls_oct import RetinalThicknessReport
+
+report = RetinalThicknessReport.from_pixelwise(
+    oct_volume=oct_volume,
+    pixel_seg=segmentation,
+    laterality=oct_volume.laterality,
+    auto_find_fovea=True,
+)
+
+report.add_thickness_map(
+    name="RNFL",
+    layer_names=["Retinal Nerve Fiber Layer (RNFL)"],
+    vmin=0,
+    vmax=0.2,
+)
+report.add_thickness_map(
+    name="Total",
+    layer_names=[
+        "Retinal Nerve Fiber Layer (RNFL)",
+        "Ganglion cell layer (GCL)",
+        "Inner plexiform layer (IPL)",
+        # ... additional layers ...
+        "Retinal pigment epithelium (RPE)",
+    ],
+    vmin=0,
+    vmax=0.5,
+)
+
+report.process()
+results = report.get_result_dict()
+report.write_report_html("output/report", id="patient_001")
+```
+
+See [rtnls_oct/eyened/README.md](rtnls_oct/eyened/README.md) for loading data from `eyened_orm`.
 
 ## Core Components
 
@@ -110,14 +162,27 @@ oct_volume = OCT3DVolume(
     res_depth_mm=float,
     laterality='L' or 'R',
     orientation='Horizontal' or 'Vertical',
-    direction_bscan='Left' or 'Right',
-    axial_direction='Up' or 'Down'
+    direction_bscan='Left' or 'Right',  # default: 'Right'
+    axial_direction='Up' or 'Down',      # default: 'Down'
 )
 
-# Methods
-oct_volume.plot_enface_image()  # Plot enface projection
-oct_volume.plot_bscan(index)    # Plot specific B-scan
-oct_volume.enface_projection()  # Get enface projection array
+# Methods and properties
+oct_volume.plot_enface_image(ax=ax)
+oct_volume.plot_bscan(index, ax=ax)
+oct_volume.plot_central_bscan(ax=ax)
+oct_volume.enface_projection()
+oct_volume.resolution_mm  # (res_depth_mm, res_height_mm, res_width_mm)
+```
+
+### OCTVolumeWithEnface
+
+Links an OCT volume to an enface image with registration coordinates for overlay visualization.
+
+```python
+from rtnls_oct import OCTVolumeWithEnface
+
+volume = OCTVolumeWithEnface.from_dicom_files("oct.dcm", "enface.dcm")
+volume.plot_oct_on_enface()
 ```
 
 ### ContoursData
@@ -136,6 +201,21 @@ thickness = segmentation.get_thickness_map("ILM", "RPE")
 
 # Get contours for specific B-scan
 contours = segmentation.get_contours_on_bscan(bscan_index=50)
+```
+
+### PixelWiseSegmentation
+
+Manages pixel-wise label segmentations. Layer names are stored in `LABELS` (mapping name to label value).
+
+```python
+from rtnls_oct import PixelWiseSegmentation
+
+# Thickness by summing pixels along depth for named layers
+thickness_map = segmentation.get_thickness_map(["RNFL", "GCL"])
+
+# Visualize a B-scan
+segmentation.plot_bscan(bscan_index=10)
+segmentation.get_bscan(bscan_index=10)
 ```
 
 ### OCTBScan
@@ -168,38 +248,55 @@ thickness_results = circular_bscan.extract_thickness_tsnit("ILM", "RPE")
 
 ### RetinalThicknessReport
 
-Generates comprehensive thickness analysis reports with ETDRS grid measurements.
+Generates comprehensive thickness analysis reports with ETDRS grid measurements. Supports both `ContoursData` and `PixelWiseSegmentation`.
+
+**Contour-based segmentation:**
 
 ```python
 report = RetinalThicknessReport(
-    oct_volume=OCT3DVolume,
-    segmentation=ContoursData,
+    oct_volume=oct_volume,
+    segmentation=contours_segmentation,
     laterality='R',
-    fovea_x=float,
-    fovea_y=float
+    fovea_x=fovea_x,
+    fovea_y=fovea_y,
 )
 
-# Add thickness maps to analyze
 report.add_thickness_map(
     name="RNFL",
     boundary_bottom="RNFL",
     boundary_top="ILM",
-    pcamap=PCAThicknessMap,  # Optional
+    pcamap=pca_model,  # Optional
     vmin=0,
-    vmax=500
+    vmax=0.2,
+)
+```
+
+**Pixel-wise segmentation:**
+
+```python
+report = RetinalThicknessReport.from_pixelwise(
+    oct_volume=oct_volume,
+    pixel_seg=pixel_segmentation,
+    laterality='R',
+    auto_find_fovea=True,
 )
 
-# Process all maps
-report.process()
+report.add_thickness_map(
+    name="RNFL",
+    layer_names=["Retinal Nerve Fiber Layer (RNFL)"],
+    vmin=0,
+    vmax=0.2,
+)
+```
 
-# Get quantitative results
+**Common workflow:**
+
+```python
+report.process()
 results = report.get_result_dict()
 # Returns dict with keys like: 'RNFL_C0_mean', 'RNFL_S1_mean', etc.
 
-# Visualize
 fig, axes = report.plot_results("RNFL")
-
-# Generate HTML report
 report.write_report_html("output/path", id="patient_id")
 ```
 
@@ -212,17 +309,17 @@ Generate ETDRS grid masks for thickness analysis:
 ```python
 from rtnls_oct import utils
 
-# Get ETDRS grid on image
 grid = utils.get_etdrs_grid_on_image(
     image_shape=(100, 512),
     resolution_mm=(0.047, 0.012),
     laterality='R',
     direction_bscan="Right",
     axial_direction="Down",
-    center=(fovea_y, fovea_x)  # Optional
+    center=(fovea_y, fovea_x),  # Optional
 )
 
-# Grid contains masks for: 'C0', 'S1', 'I1', 'N1', 'T1', 'S2', 'I2', 'N2', 'T2', 'GRID'
+# Grid contains masks for: 'C0', 'S1', 'I1', 'N1', 'T1', 'S2', 'I2', 'N2', 'T2',
+# 'S_hemifield', 'I_hemifield', 'GRID'
 ```
 
 ### Fovea Localization
@@ -236,7 +333,7 @@ fovea_y, fovea_x = utils.find_fovea(
     height_map=segmentation.get_height_map("ILM"),
     res_depth_mm=0.047,
     res_width_mm=0.012,
-    exclude_mask=None  # Optional mask to exclude regions
+    exclude_mask=None,  # Optional mask to exclude regions
 )
 ```
 
@@ -247,32 +344,26 @@ fovea_y, fovea_x = utils.find_fovea(
 Perform Principal Component Analysis on thickness maps:
 
 ```python
-from rtnls_oct.analysis import PCAThicknessMap
-from rtnls_oct.analysis.interpolation import InterpolationMap
+from rtnls_oct.analysis import PCAThicknessMap, ETDRSInterpolationMap
 
-# Create interpolation map
-interp_map = InterpolationMap(...)
+# ETDRS-shaped sampling grid (3 mm radius)
+interp_map = ETDRSInterpolationMap(points_per_mm=10, reference_laterality='R')
 
-# Create PCA model
 pca_model = PCAThicknessMap(n_components=5, interpolation_map=interp_map)
-
-# Fit on training data
 pca_model.fit(training_thickness_maps)
 
-# Transform new data
 pca_features = pca_model.transform_from_map(
     thickness_map,
     laterality='R',
     resolution_mm=(0.047, 0.012),
-    center=(fovea_y, fovea_x)
+    center=(fovea_y, fovea_x),
 )
 
-# Get reconstruction error
 error_map, reconstruction = pca_model.get_reconstruction_error(
     thickness_map,
     laterality='R',
     resolution_mm=(0.047, 0.012),
-    center=(fovea_y, fovea_x)
+    center=(fovea_y, fovea_x),
 )
 ```
 
@@ -291,24 +382,33 @@ fluctuation_map = quality_metrics.get_thickness_fluctuation_map(thickness_map)
 ```python
 from rtnls_oct import plotting
 
-# Plot B-scan
 plotting.plot_image(bscan_image)
-
-# Plot thickness map
 plotting.plot_thickness(thickness_map, alpha=0.5, vmin=0)
 
-# Plot ETDRS grid masks
-plotting.plot_grid_masks(etdrs_grid, ax=ax)
+# ETDRS grid overlays with optional styling
+plotting.plot_grid_masks(
+    etdrs_grid,
+    ax=ax,
+    line_color="r",
+    show_labels=True,
+    linewidths=0.5,
+)
 ```
 
 ## Conventions
 
 Coordinates and resolutions are in the order of `[z, y, x]` / `[depth, height, width]`, where:
 - `z / depth` is the slow axis, so across the b-scans. Regardless of the real-world direction of the OCT image.
-- `y / height` is in the direction of the OCT beam, so in the height of a b-scan. 
+- `y / height` is in the direction of the OCT beam, so in the height of a b-scan.
 - `x / width` is the fast axis or the width of the b-scan.
 
 Resolutions are in millimetres unless otherwise stated. Preferably it is stated with the variable by prefixing `_mm`. A size is in pixels unless otherwise stated, e.g. by prefixing with `_mm`.
+
+## Further Reading
+
+- [Loading data from eyened_orm](rtnls_oct/eyened/README.md)
+- [Celery worker setup](worker/README.md)
+- [Docker deployment](DOCKER.md)
 
 ## License
 
@@ -321,4 +421,3 @@ Eyened Team (k.vangarderen@erasmusmc.nl; eyened@erasmusmc.nl)
 ## References
 
 - [ETDRS Grid](https://www.ncbi.nlm.nih.gov/pmc/articles/PMC1311780/)
-
